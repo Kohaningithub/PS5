@@ -63,7 +63,7 @@ from bs4 import BeautifulSoup
 url = "https://oig.hhs.gov/fraud/enforcement/"
 
 response = requests.get(url)
-soup = BeautifulSoup(response.content, "html.parser")
+soup = BeautifulSoup(response.content, 'lxml')
 
 titles = []
 dates = []
@@ -110,7 +110,7 @@ from bs4 import BeautifulSoup
 url = "https://oig.hhs.gov/fraud/enforcement/"
 
 response = requests.get(url)
-soup = BeautifulSoup(response.content, "html.parser")
+soup = BeautifulSoup(response.content, 'lxml')
 
 titles = []
 dates = []
@@ -254,7 +254,7 @@ def scrape_enforcement_actions(year, month):
     while True:  # Pagination loop
         print(f"Processing page {page}...")
         response = requests.get(current_url)
-        soup = BeautifulSoup(response.content, "html.parser")
+        soup = BeautifulSoup(response.content, 'lxml')
         entries = soup.find_all('h2', class_='usa-card__heading')
         
         if not entries:  
@@ -297,15 +297,10 @@ def scrape_enforcement_actions(year, month):
                 categories.append(category.text.strip() if category else 'No category found')
         
         # Look for next page
-        next_page = soup.find('a', class_='next-page')
-        if next_page and next_page.find('a'):
-            next_link = next_page.find('a')['href']
-            current_url = base_url + next_link
-            page += 1
-            time.sleep(1)  
-        else:
-            break
-    
+        page += 1
+        current_url = f"{base_url}?page={page}"
+        time.sleep(1)
+   
     df = pd.DataFrame({
         'Title': titles,
         'Date': dates,
