@@ -166,8 +166,6 @@ df = pd.DataFrame({
 
 df.head()
 
-df.to_csv('enforcement_actions.csv', index=False)
-print("Data saved to enforcement_actions.csv")
 ```
 
 ## Step 2: Making the scraper dynamic
@@ -175,12 +173,168 @@ print("Data saved to enforcement_actions.csv")
 ### 1. Turning the scraper into a function 
 
 * a. Pseudo-Code (PARTNER 2)
+```{python}
+def scrape_enforcement_actions(year, month):
+    """
+    Pseudo-code for scraping enforcement actions from a given month/year to present
+    
+    Parameters:
+    year (int): Starting year to scrape from
+    month (int): Starting month to scrape from
+    """
+```
+FUNCTION scrape_enforcement_actions(year, month):
 
+1. INPUT VALIDATION
+   IF year is less than 2013
+      Print "Please enter a year >= 2013"
+      Exit function
+   
+2. SETUP
+   Create empty lists for storing:
+   - titles
+   - dates
+   - categories
+   - links
+   - agencies
+   Set base URL to HHS OIG enforcement page
 
+3. PAGINATION LOOP (WHILE loop)
+   WHILE there are more pages to process:
+      Get current page content
+      FOR each enforcement action on page:
+         Extract title and link
+         Get agency from detailed page
+         Get date and category
+         Store all information in lists
+         Wait 1 second before next action
+      
+      Look for "next page" link
+      IF found:
+         Update URL to next page
+         Wait 1 second before next page
+      ELSE:
+         Exit WHILE loop
+
+4. DATA PROCESSING
+   Create DataFrame from collected lists
+   Convert dates to proper format
+   Filter to keep only entries >= input month/year
+
+5. SAVE RESULTS
+   Create filename: "enforcement_actions_[year]_[month].csv"
+   Save DataFrame to CSV file
+
+6. OUTPUT
+   Return the filtered DataFrame
 * b. Create Dynamic Scraper (PARTNER 2)
 
 ```{python}
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
 
+def scrape_enforcement_actions(year, month):
+    if year < 2013:
+        print("Please enter a year >= 2013")
+        return None
+    
+    titles = []
+    dates = []
+    categories = []
+    links = []
+    agencies = []
+    
+    base_url = "https://oig.hhs.gov/fraud/enforcement/"
+    current_url = base_url
+    page = 1
+    
+    while True:  # Pagination loop
+        print(f"Processing page {page}...")
+        response = requests.get(current_url)
+        soup = BeautifulSoup(response.content, "html.parser")
+        entries = soup.find_all('h2', class_='usa-card__heading')
+        
+        if not entries:  
+            break
+            
+        for entry in entries:
+            link = entry.find('a')
+            if link:
+                titles.append(link.text.strip())
+                full_link = 'https://oig.hhs.gov' + link['href']
+                links.append(full_link)
+                
+                try:
+                    time.sleep(1)  
+                    response = requests.get(full_link)
+                    detailed_soup = BeautifulSoup(response.content, "html.parser")
+                    
+                    detail_div = detailed_soup.find('div', class_='margin-top-5 padding-y-3 border-y-1px border-base-lighter')
+                    if detail_div:
+                        all_li = detail_div.find_all('li')
+                        agency_found = False
+                        for li in all_li:
+                            span = li.find('span')
+                            if span and 'Agency:' in span.text:
+                                agencies.append(li.text.replace('Agency:', '').strip())
+                                agency_found = True
+                                break
+                        if not agency_found:
+                            agencies.append('No agency found')
+                except Exception as e:
+                    print(f"Error processing {full_link}: {str(e)}")
+                    agencies.append('Error retrieving agency')
+                    
+            div = entry.find_parent('div')
+            if div:
+                date = div.find('span', class_='text-base-dark padding-right-105')
+                dates.append(date.text.strip() if date else 'No date found')
+                
+                category = div.find('li', class_='display-inline-block usa-tag text-no-lowercase text-base-darkest bg-base-lightest margin-right-1')
+                categories.append(category.text.strip() if category else 'No category found')
+        
+        # Look for next page
+        next_page = soup.find('a', class_='next-page')
+        if next_page and next_page.find('a'):
+            next_link = next_page.find('a')['href']
+            current_url = base_url + next_link
+            page += 1
+            time.sleep(1)  
+        else:
+            break
+    
+    # Create DataFrame
+    df = pd.DataFrame({
+        'Title': titles,
+        'Date': dates,
+        'Category': categories,
+        'Link': links,
+        'Agency': agencies
+    })
+    
+    # Convert dates and filter
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df[df['Date'] >= f"{year}-{month:02d}-01"]
+    
+    # Save to CSV
+    filename = f"enforcement_actions_{year}_{month}.csv"
+    df.to_csv(filename, index=False)
+    
+    return df
+
+# Run the scraper for January 2023
+df = scrape_enforcement_actions(2023, 1)
+
+# Print results
+print(f"\nTotal number of enforcement actions: {len(df)}")
+print("\nEarliest enforcement action:")
+earliest = df.sort_values('Date').iloc[0]
+print(f"Date: {earliest['Date']}")
+print(f"Title: {earliest['Title']}")
+print(f"Agency: {earliest['Agency']}")
 ```
 
 * c. Test Partner's Code (PARTNER 1)
