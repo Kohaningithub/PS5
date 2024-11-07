@@ -306,7 +306,6 @@ def scrape_enforcement_actions(year, month):
         else:
             break
     
-    # Create DataFrame
     df = pd.DataFrame({
         'Title': titles,
         'Date': dates,
@@ -319,7 +318,6 @@ def scrape_enforcement_actions(year, month):
     df['Date'] = pd.to_datetime(df['Date'])
     df = df[df['Date'] >= f"{year}-{month:02d}-01"]
     
-    # Save to CSV
     filename = f"enforcement_actions_{year}_{month}.csv"
     df.to_csv(filename, index=False)
     
