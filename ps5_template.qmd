@@ -227,6 +227,7 @@ FUNCTION scrape_enforcement_actions(year, month):
 
 6. OUTPUT
    Return the filtered DataFrame
+
 * b. Create Dynamic Scraper (PARTNER 2)
 I will use ThreadPoolExecutor to get data much more faster than the regular process. And I used several strategies to avoid time out problem.
 
@@ -403,36 +404,36 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error running scraper: {str(e)}")
 ```
-* c. Test Partner's Code (PARTNER 1)
-
-```{python}
-# Run scraper for January 2021
-df_2021_01 = scrape_enforcement_actions(2021, 1)
-
-# Print total number of actions
-print(f"\nTotal number of enforcement actions since Jan 2021: {len(df)}")
-
-# Get earliest action details
-earliest = df.sort_values('Date').iloc[0]
-print("\nEarliest enforcement action details:")
-print(f"Date: {earliest['Date'].strftime('%B %d, %Y')}")
-print(f"Title: {earliest['Title']}")
-print(f"Agency: {earliest['Agency']}")
-print(f"Category: {earliest['Category']}")
-
-
-# Display first few rows to verify data
-print("\nFirst few entries:")
-display(df_2021_01.head())
-
-```
 Total number of enforcement actions: 9623
-
 Earliest enforcement action:
 Date: 2012-06-20 00:00:00
 Title: One Individual Charged with Failure to Pay Legal Child Support
 Agency: U.S. Attorney's Office District of Puerto Rico
 Categories: Child Support and Criminal and Civil Actions
+
+* c. Test Partner's Code (PARTNER 1)
+
+```{python}
+# Run scraper for January 2021
+df = pd.read_csv('/Users/kohanchen/Documents/Fall 2024/student30538/problem_sets/ps5/PS5/enforcement_actions_2023_1_combined.csv')
+df['Date'] = pd.to_datetime(df['Date'])
+
+df_filtered = df[df['Date'] >= '2021-01-01']
+
+#Print results
+print(f"\nTotal number of enforcement actions since Jan 2021: {len(df)}")
+
+# Get earliest action details
+print(f"\nTotal number of enforcement actions since Jan 2021: {len(df_filtered)}")
+print("\nEarliest enforcement action:")
+earliest = df_filtered.sort_values('Date').iloc[0]
+print(f"Date: {earliest['Date']}")
+print(f"Title: {earliest['Title']}")
+print(f"Agency: {earliest['Agency']}")
+print(f"Categories: {earliest['Category']}")
+
+```
+
 ## Step 3: Plot data based on scraped data
 
 ### 1. Plot the number of enforcement actions over time (PARTNER 2)
