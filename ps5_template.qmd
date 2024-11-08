@@ -228,114 +228,211 @@ FUNCTION scrape_enforcement_actions(year, month):
 6. OUTPUT
    Return the filtered DataFrame
 * b. Create Dynamic Scraper (PARTNER 2)
+I will use ThreadPoolExecutor to get data much more faster than the regular process. And I used several strategies to avoid time out problem.
 
 ```{python}
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
 import time
-from datetime import datetime
+import sys
 
-def scrape_enforcement_actions(year, month):
+# 增加递归限制
+sys.setrecursionlimit(10000)
+
+def fetch_page(url):
+    try:
+        response = requests.get(url, timeout=10)
+        return BeautifulSoup(response.content, 'html.parser')  # 改用 html.parser 而不是 lxml
+    except Exception as e:
+        print(f"Error fetching page {url}: {str(e)}")
+        return None
+
+def fetch_detailed_info(link):
+    try:
+        response = requests.get(link, timeout=10)
+        detailed_soup = BeautifulSoup(response.content, "html.parser")
+        
+        agency = 'No agency found'
+        detail_div = detailed_soup.find('div', class_='margin-top-5 padding-y-3 border-y-1px border-base-lighter')
+        if detail_div:
+            all_li = detail_div.find_all('li')
+            for li in all_li:
+                span = li.find('span')
+                if span and 'Agency:' in span.text:
+                    agency = li.text.replace('Agency:', '').strip()
+                    break
+        return agency
+    except Exception as e:
+        print(f"Error processing {link}: {str(e)}")
+        return 'Error retrieving agency'
+
+def scrape_enforcement_actions(year, month, max_pages=482):
     if year < 2013:
         print("Please enter a year >= 2013")
         return None
     
-    titles = []
-    dates = []
-    categories = []
-    links = []
-    agencies = []
-    
+    data_list = []
     base_url = "https://oig.hhs.gov/fraud/enforcement/"
-    current_url = base_url
     page = 1
-    
-    while True:  # Pagination loop
-        print(f"Processing page {page}...")
-        response = requests.get(current_url)
-        soup = BeautifulSoup(response.content, 'lxml')
-        entries = soup.find_all('h2', class_='usa-card__heading')
-        
-        if not entries:  
-            break
+
+    while page <= max_pages:
+        try:
+            print(f"Processing page {page}...")
+            current_url = f"{base_url}?page={page}" if page > 1 else base_url
             
-        for entry in entries:
-            link = entry.find('a')
-            if link:
-                titles.append(link.text.strip())
-                full_link = 'https://oig.hhs.gov' + link['href']
-                links.append(full_link)
+            soup = fetch_page(current_url)
+            if soup is None:
+                print(f"Failed to fetch page {page}")
+                break
                 
-                try:
-                    time.sleep(1)  
-                    response = requests.get(full_link)
-                    detailed_soup = BeautifulSoup(response.content, "html.parser")
+            entries = soup.find_all('h2', class_='usa-card__heading')
+            
+            if not entries:
+                print(f"No entries found on page {page}. Stopping pagination.")
+                break
+            
+            entries_added = 0
+            for entry in entries:
+                link = entry.find('a')
+                if link:
+                    title = link.text.strip()
+                    full_link = 'https://oig.hhs.gov' + link['href']
                     
-                    detail_div = detailed_soup.find('div', class_='margin-top-5 padding-y-3 border-y-1px border-base-lighter')
-                    if detail_div:
-                        all_li = detail_div.find_all('li')
-                        agency_found = False
-                        for li in all_li:
-                            span = li.find('span')
-                            if span and 'Agency:' in span.text:
-                                agencies.append(li.text.replace('Agency:', '').strip())
-                                agency_found = True
-                                break
-                        if not agency_found:
-                            agencies.append('No agency found')
-                except Exception as e:
-                    print(f"Error processing {full_link}: {str(e)}")
-                    agencies.append('Error retrieving agency')
-                    
-            div = entry.find_parent('div')
-            if div:
-                date = div.find('span', class_='text-base-dark padding-right-105')
-                dates.append(date.text.strip() if date else 'No date found')
-                
-                category = div.find('li', class_='display-inline-block usa-tag text-no-lowercase text-base-darkest bg-base-lightest margin-right-1')
-                categories.append(category.text.strip() if category else 'No category found')
+                    div = entry.find_parent('div')
+                    if div:
+                        date = div.find('span', class_='text-base-dark padding-right-105')
+                        date_text = date.text.strip() if date else 'No date found'
+                        
+                        category_tags = div.find_all('li', class_='display-inline-block usa-tag text-no-lowercase text-base-darkest bg-base-lightest margin-right-1')
+                        entry_categories = [cat.text.strip() for cat in category_tags] if category_tags else ['NA']
+                        
+                        data_list.append({
+                            'Title': title,
+                            'Date': date_text,
+                            'Categories': entry_categories,
+                            'Link': full_link
+                        })
+                        entries_added += 1
+            
+            if entries_added == 0:
+                print(f"No valid entries added on page {page}. Stopping pagination.")
+                break
+            
+            print(f"Added {entries_added} entries from page {page}")
+            page += 1
+            time.sleep(random.uniform(1, 2))  # 增加延迟时间
+            
+        except Exception as e:
+            print(f"Error processing page {page}: {str(e)}")
+            break
+
+    print(f"\nCollected {len(data_list)} total entries")
+    
+    # Fetch agency info with reduced parallelism
+    with ThreadPoolExecutor(max_workers=5) as executor:  # 减少并行数
+        futures = {executor.submit(fetch_detailed_info, entry['Link']): i 
+                  for i, entry in enumerate(data_list)}
         
-        # Look for next page
-        page += 1
-        current_url = f"{base_url}?page={page}"
-        time.sleep(1)
-   
-    df = pd.DataFrame({
-        'Title': titles,
-        'Date': dates,
-        'Category': categories,
-        'Link': links,
-        'Agency': agencies
-    })
-    
-    # Convert dates and filter
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df[df['Date'] >= f"{year}-{month:02d}-01"]
-    
-    filename = f"enforcement_actions_{year}_{month}.csv"
-    df.to_csv(filename, index=False)
-    
-    return df
+        for future in as_completed(futures):
+            try:
+                idx = futures[future]
+                agency = future.result()
+                data_list[idx]['Agency'] = agency
+            except Exception as e:
+                print(f"Error processing agency info: {str(e)}")
 
-# Run the scraper for January 2023
-df = scrape_enforcement_actions(2023, 1)
+    # Create separate rows version
+    rows_separate = []
+    for entry in data_list:
+        for category in entry['Categories']:
+            rows_separate.append({
+                'Title': entry['Title'],
+                'Date': entry['Date'],
+                'Category': category,
+                'Link': entry['Link'],
+                'Agency': entry.get('Agency', 'Error retrieving agency')
+            })
 
-# Print results
-print(f"\nTotal number of enforcement actions: {len(df)}")
-print("\nEarliest enforcement action:")
-earliest = df.sort_values('Date').iloc[0]
-print(f"Date: {earliest['Date']}")
-print(f"Title: {earliest['Title']}")
-print(f"Agency: {earliest['Agency']}")
+    # Create combined categories version
+    rows_combined = []
+    for entry in data_list:
+        rows_combined.append({
+            'Title': entry['Title'],
+            'Date': entry['Date'],
+            'Category': ' and '.join(entry['Categories']),
+            'Link': entry['Link'],
+            'Agency': entry.get('Agency', 'Error retrieving agency')
+        })
+
+    # Create DataFrames
+    df_separate = pd.DataFrame(rows_separate)
+    df_combined = pd.DataFrame(rows_combined)
+    
+    # Convert dates and filter by date
+    for df in [df_separate, df_combined]:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df = df[df['Date'] >= f"{year}-{month:02d}-01"]
+    
+    # Save to CSV
+    filename_separate = f"enforcement_actions_{year}_{month}_separate.csv"
+    filename_combined = f"enforcement_actions_{year}_{month}_combined.csv"
+    
+    df_separate.to_csv(filename_separate, index=False)
+    df_combined.to_csv(filename_combined, index=False)
+    
+    print(f"\nSaved separate categories version to: {filename_separate}")
+    print(f"Saved combined categories version to: {filename_combined}")
+    
+    return df_combined
+
+# Run the scraper
+if __name__ == "__main__":
+    try:
+        df = scrape_enforcement_actions(2023, 1)
+        if df is not None:
+            print(f"\nTotal number of enforcement actions: {len(df)}")
+            print("\nEarliest enforcement action:")
+            earliest = df.sort_values('Date').iloc[0]
+            print(f"Date: {earliest['Date']}")
+            print(f"Title: {earliest['Title']}")
+            print(f"Agency: {earliest['Agency']}")
+            print(f"Categories: {earliest['Category']}")
+    except Exception as e:
+        print(f"Error running scraper: {str(e)}")
 ```
-
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
+# Run scraper for January 2021
+df_2021_01 = scrape_enforcement_actions(2021, 1)
+
+# Print total number of actions
+print(f"\nTotal number of enforcement actions since Jan 2021: {len(df)}")
+
+# Get earliest action details
+earliest = df.sort_values('Date').iloc[0]
+print("\nEarliest enforcement action details:")
+print(f"Date: {earliest['Date'].strftime('%B %d, %Y')}")
+print(f"Title: {earliest['Title']}")
+print(f"Agency: {earliest['Agency']}")
+print(f"Category: {earliest['Category']}")
+
+
+# Display first few rows to verify data
+print("\nFirst few entries:")
+display(df_2021_01.head())
 
 ```
+Total number of enforcement actions: 9623
 
+Earliest enforcement action:
+Date: 2012-06-20 00:00:00
+Title: One Individual Charged with Failure to Pay Legal Child Support
+Agency: U.S. Attorney's Office District of Puerto Rico
+Categories: Child Support and Criminal and Civil Actions
 ## Step 3: Plot data based on scraped data
 
 ### 1. Plot the number of enforcement actions over time (PARTNER 2)
