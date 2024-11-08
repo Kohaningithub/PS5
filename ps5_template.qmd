@@ -246,7 +246,7 @@ sys.setrecursionlimit(10000)
 def fetch_page(url):
     try:
         response = requests.get(url, timeout=10)
-        return BeautifulSoup(response.content, 'html.parser')  # 改用 html.parser 而不是 lxml
+        return BeautifulSoup(response.content, 'html.parser')  # use html.parser instead of lxml
     except Exception as e:
         print(f"Error fetching page {url}: {str(e)}")
         return None
