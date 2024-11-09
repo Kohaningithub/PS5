@@ -27,7 +27,7 @@ output:
 1. This problem set is a paired problem set.
 2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
     - Partner 1 (name and cnet ID): Kohan Chen, kohanchen
-    - Partner 2 (name and cnet ID): Katherine Tu, 
+    - Partner 2 (name and cnet ID): Katherine Tu, katherinetu
 3. Partner 1 will accept the `ps5` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
 4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: **KC KT**
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[KC KT](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
@@ -241,7 +241,7 @@ import random
 import time
 import sys
 
-# 增加递归限制
+# add restriction
 sys.setrecursionlimit(10000)
 
 def fetch_detailed_info(link, session=None, max_retries=3):
@@ -335,7 +335,7 @@ def scrape_enforcement_actions(year, month, max_pages=482):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     })
     
-    # 第一阶段：快速并行获取页面
+    # Stage One: quickly fetch and read the page
     print("Fetching pages...")
     failed_pages = set()
     
@@ -358,7 +358,7 @@ def scrape_enforcement_actions(year, month, max_pages=482):
                 failed_pages.add(page)
                 print(f"Error on page {page}: {str(e)}")
     
-    # 第二阶段：单独处理失败的页面
+    # Stage Two: Dealing with failed pages only
     if failed_pages:
         print(f"\nRetrying {len(failed_pages)} failed pages...")
         for page in sorted(failed_pages):
@@ -373,7 +373,7 @@ def scrape_enforcement_actions(year, month, max_pages=482):
     
     print(f"\nCollected {len(data_list)} total entries")
     
-    # 第三阶段：快速获取机构信息
+    # Stage three: quickly fetching agency information
     print("Fetching agency information...")
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_entry = {
@@ -423,9 +423,11 @@ def scrape_enforcement_actions(year, month, max_pages=482):
     df_combined = pd.DataFrame(rows_combined)
     
     # Convert date and filter
-    for df in [df_separate, df_combined]:
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        df = df[df['Date'] >= f"{year}-{month:02d}-01"]
+    df_separate['Date'] = pd.to_datetime(df_separate['Date'], errors='coerce')
+    df_separate = df_separate[df_separate['Date'] >= f"{year}-{month:02d}-01"]
+    
+    df_combined['Date'] = pd.to_datetime(df_combined['Date'], errors='coerce')
+    df_combined = df_combined[df_combined['Date'] >= f"{year}-{month:02d}-01"]
     
     # Save to CSV
     filename_separate = f"enforcement_actions_{year}_{month}_separate.csv"
@@ -438,7 +440,11 @@ def scrape_enforcement_actions(year, month, max_pages=482):
     print(f"Saved combined categories version to: {filename_combined}")
     
     return df_combined
+```
 
+```{python}
+#scrape data from year 2023 January
+#| eval: false
 if __name__ == "__main__":
     try:
         df = scrape_enforcement_actions(2023, 1)
@@ -454,43 +460,69 @@ if __name__ == "__main__":
         print(f"Error running scraper: {str(e)}")
 ```
 
-Total number of enforcement actions: 9623
+Total number of enforcement actions: 1534
 Earliest enforcement action:
-Date: 2012-06-20 00:00:00
-Title: One Individual Charged with Failure to Pay Legal Child Support
-Agency: U.S. Attorney's Office District of Puerto Rico
-Categories: Child Support and Criminal and Civil Actions
+Date: 2023-01-03 00:00:00
+Title: Podiatrist Pays $90,000 To Settle False Billing Allegation
+Agency: U.S. Attorney’s Office, Southern District of Texas
+Categories: Criminal and Civil Actions
 
 
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
-# Run scraper for January 2021
-df = pd.read_csv('/Users/kohanchen/Documents/Fall 2024/student30538/problem_sets/ps5/PS5/enforcement_actions_2023_1_combined.csv')
-df['Date'] = pd.to_datetime(df['Date'])
-
-df_filtered = df[df['Date'] >= '2021-01-01']
-
-#Print results
-print(f"\nTotal number of enforcement actions since Jan 2021: {len(df)}")
-
-# Get earliest action details
-print(f"\nTotal number of enforcement actions since Jan 2021: {len(df_filtered)}")
-print("\nEarliest enforcement action:")
-earliest = df_filtered.sort_values('Date').iloc[0]
-print(f"Date: {earliest['Date']}")
-print(f"Title: {earliest['Title']}")
-print(f"Agency: {earliest['Agency']}")
-print(f"Categories: {earliest['Category']}")
-
+# Run scraper from January 2021
+#| eval: false
+if __name__ == "__main__":
+    try:
+        df = scrape_enforcement_actions(2021, 1)
+        if df is not None:
+            print(f"\nTotal number of enforcement actions: {len(df)}")
+            print("\nEarliest enforcement action:")
+            earliest = df.sort_values('Date').iloc[0]
+            print(f"Date: {earliest['Date']}")
+            print(f"Title: {earliest['Title']}")
+            print(f"Agency: {earliest['Agency']}")
+            print(f"Categories: {earliest['Category']}")
+    except Exception as e:
+        print(f"Error running scraper: {str(e)}")
 ```
+
+Total number of enforcement actions:1534
+Earliest enforcement action:
+Date: 2021-01-04 00:00:00
+Title: The United States And Tennessee Resolve Claims With Three Providers For False Claims Act Liability Relating To ‘P-Stim’ Devices For A Total Of $1.72 Million Agency: U.S. Attorney's Office, Middle District of Tennessee
+Categories: Criminal and Civil Actions
+
+
 
 ## Step 3: Plot data based on scraped data
 
 ### 1. Plot the number of enforcement actions over time (PARTNER 2)
 
 ```{python}
+#Load data
+df_2021 = pd.read_csv('/Users/katherinetu/Desktop/PS5/enforcement_actions_2021_1_combined.csv')
 
+#Ensure it is datetime formate
+df_2021["Date"] = pd.to_datetime(df_2021["Date"])
+
+#Aggregate to month+year and count occurrences
+df_2021["MonthYear"] = df_2021["Date"].dt.to_period("M")
+df_2021["MonthYear"] = df_2021["MonthYear"].dt.strftime("%b-%Y")
+monthly_counts = df_2021.groupby("MonthYear").size().reset_index(name = "Count")
+```
+
+```{python}
+#Create Altair Graph
+count_2021 = alt.Chart(monthly_counts).mark_line().encode(
+    alt.X("MonthYear:T", axis=alt.Axis(format='%b-%Y')),
+    alt.Y("Count:Q")
+).properties(
+    width = 500
+)
+
+count_2021
 ```
 
 ### 2. Plot the number of enforcement actions categorized: (PARTNER 1)
@@ -498,13 +530,82 @@ print(f"Categories: {earliest['Category']}")
 * based on "Criminal and Civil Actions" vs. "State Enforcement Agencies"
 
 ```{python}
+#The number of enforcements split by "Criminal and Civil Actions" & "State Enforcement Agencies"
+df_category = df_2021.groupby(["MonthYear","Category"]).size().reset_index(name = "Count")
+df_cc_sea = df_category[df_category["Category"].isin(["Criminal and Civil Actions","State Enforcement Agencies"])]
+```
 
+```{python}
+#plot a line graph of the two lines
+chart_cc_sea = alt.Chart(df_cc_sea).mark_line().encode(
+    alt.X("MonthYear:T", axis=alt.Axis(format='%b-%Y')),
+    alt.Y("Count:Q"),
+    alt.Color("Category:N")
+).properties(
+    width = 500
+) 
+
+chart_cc_sea
 ```
 
 * based on five topics
 
 ```{python}
+#filter dataframe to only contain "criminal and civil actions" data
+df_cc = df_2021[df_2021["Category"].isin(["Criminal and Civil Actions"])]
+```
 
+```{python}
+#write a function to assign topics according to key words in the titles
+def assign_topic(df):
+    #Iterate over each row and create a topic list to account for multiple topics
+    rows = []
+    for _, row in df.iterrows():
+        title = row['Title']
+        title_lower = title.lower()
+        topics = []
+
+    # Define the conditions and corresponding categories
+        if any(keyword in title_lower for keyword in ["health care","medicare", "medicaid"]):
+            topics.append("Health Care Fraud")
+        if any(keyword in title_lower for keyword in ["false claim","tax"]):
+            topics.append("Financial Fraud")
+        if any(keyword in title_lower for keyword in ["drug","drugs","pill", "pills"]):
+            topics.append("Drug Enforcement")
+        if any(keyword in title_lower for keyword in ["kickback","bribery","conspiracy"]):
+            topics.append("Bribery/Corruption")
+        if not topics:
+            topics.append("Other")
+
+    #Add each topic as a separate row
+        for topic in topics:
+            row_data = row.to_dict()
+            row_data["Topic"] = topic
+            rows.append(row_data)
+    
+    return pd.DataFrame(rows)
+```
+
+```{python}
+#apply it to the Criminal and Civil Actions Category
+df_5topics = assign_topic(df_cc)
+
+#aggregate the number of actions by monthyear and by the 5 topics
+df_5topics_count = df_5topics.groupby(["MonthYear","Topic"]).size().reset_index(name = "Count")
+```
+
+```{python}
+#Make a line graph 
+chart_5topics = alt.Chart(df_5topics_count).mark_line().encode(
+    alt.X("MonthYear:T", axis=alt.Axis(format='%b-%Y')),
+    alt.Y("Count:Q"),
+    alt.Color("Topic:N"),
+    alt.Tooltip(["MonthYear:T","Count:Q"])
+).properties(
+    width = 500
+) 
+
+chart_5topics
 ```
 
 ## Step 4: Create maps of enforcement activity
@@ -512,26 +613,133 @@ print(f"Categories: {earliest['Category']}")
 ### 1. Map by State (PARTNER 1)
 
 ```{python}
+import geopandas as gpd
+import matplotlib.pyplot as plt
+```
 
+```{python}
+#Filter the dataset to include only state agency actions
+df_state = df_2021[df_2021["Agency"].str.contains("State of", na = False)]
+
+#Clean the dataset to include only state names
+df_state["Agency"] = df_state["Agency"].str.replace(r"(?i)state of ", "", regex=True).str.strip()
+
+#Find the actions taken by state
+df_state_count = df_state.groupby("Agency").size().reset_index(name = "Count")
+```
+```{python}
+#Read the shapefile
+state_shp = gpd.read_file("/Users/katherinetu/Desktop/PS5/cb_2018_us_state_500k/cb_2018_us_state_500k.shp")
+
+#Merge the count data
+state_count_shp = state_shp.merge(df_state_count, 
+                                 left_on="NAME",  
+                                 right_on="Agency",    
+                                 how="left")
+
+state_count_shp["Count"] = state_count_shp["Count"].fillna(0)
 ```
 
 
+```{python}
+#make a map
+chart_state_count = alt.Chart(state_count_shp).mark_geoshape().encode(
+    alt.Color('Count:Q', scale=alt.Scale(scheme='Reds')),
+    tooltip=['State:N', 'Count:Q'] 
+).project(
+    type='albersUsa'  # Apply Albers USA projection
+).properties(
+    width=800,  # Adjust the width as needed
+    height=500,  # Adjust the height as needed
+    title="Number of Actions by State"
+)
+
+chart_state_count
+```
 ### 2. Map by District (PARTNER 2)
 
 ```{python}
+# Filter the dataset to include only district actions
+df_district = df_2021[df_2021["Agency"].str.contains("District", na=False)]
 
+# Clean the dataset to include only district names
+df_district["Agency"] = df_district["Agency"].str.strip()
+df_district["Agency"] = df_district["Agency"].replace({r'[^\x00-\x7F]+': ' '}, regex=True)
+
+df_district["Agency"] = df_district["Agency"].str.replace(
+    r"^.*,(.*)", r"\1", regex=True).str.replace(
+        r"^.*?;", "", regex=True).str.replace(
+            r"(?i)\s*U\.S\.\s*Attorney's Office\s*", "", regex=True).str.strip()
+
+# Find the actions taken by district
+df_district_count = df_district.groupby(
+    "Agency").size().reset_index(name="Count")
+print(df_district_count.head())
 ```
 
+```{python}
+#Read the shapefile
+district_shp = gpd.read_file("/Users/katherinetu/Desktop/PS5/US Attorney Districts Shapefile/geo_export_d2278870-82b8-41a4-820b-fad368168f29.shp")
+
+#Merge the count data
+district_count_shp = district_shp.merge(df_district_count, 
+                                 left_on="judicial_d",  
+                                 right_on="Agency",    
+                                 how="left")
+
+district_count_shp["Count"] = district_count_shp["Count"].fillna(0)
+```
+
+```{python}
+#make a map
+chart_district_count = alt.Chart(district_count_shp).mark_geoshape().encode(
+    alt.Color('Count:Q', scale=alt.Scale(scheme='Greens')),
+    tooltip=['judicial_d:N', 'Count:Q'] 
+).project(
+    type='albersUsa'  # Apply Albers USA projection
+).properties(
+    width=800,  # Adjust the width as needed
+    height=500,  # Adjust the height as needed
+    title="Number of Actions by District"
+)
+
+chart_district_count
+```
 ## Extra Credit
 
 ### 1. Merge zip code shapefile with population
 ```{python}
+#Load the data
+zip_shp = gpd.read_file("/Users/katherinetu/Desktop/PS5/gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp")
 
+zip_pop = pd.read_csv("/Users/katherinetu/Desktop/PS5/DECENNIALDHC2020.P1-Data.csv")
 ```
+
+```{python}
+#clean zip_pop 
+zip_pop["NAME"] = zip_pop["NAME"].str.replace("ZCTA5 ", "")
+zip_pop.rename(columns={"NAME": "ZCTA5", "P1_001N": "Population"}, inplace=True)
+```
+
+```{python}
+#merge the files
+zip_pop_merge = zip_shp.merge(zip_pop[["ZCTA5","Population"]], 
+                                left_on="ZCTA5",  
+                                right_on="ZCTA5",    
+                                how="left").drop(columns = ["ZCTA5"])
+```
+
 
 ### 2. Conduct spatial join
 ```{python}
+#Conduct the join
+zip_pop_district_join = gpd.sjoin(zip_pop_merge, district_shp,how="inner", predicate="intersects")
+```
 
+```{python}
+#Aggregate to get the population of each district
+district_pop = zip_pop_district_join.groupby(
+"judicial_d")["Population"].sum().reset_index()
 ```
 
 ### 3. Map the action ratio in each district
