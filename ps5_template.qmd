@@ -2,7 +2,7 @@
 title: "PS5"
 author: "Kohan Chen, Katherine Tu"
 date: "2024-11-07"
-format: 
+format:
   pdf:
     include-in-header: 
        text: |
@@ -31,7 +31,7 @@ output:
 3. Partner 1 will accept the `ps5` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
 4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: **KC KT**
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[KC KT](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
-6. Late coins used this pset: \*\*\_\_\*\* Late coins left after submission: \*\*\_\_\*\*
+6. Late coins used this pset: **0** Late coins left after submission: **1**
 7. Knit your `ps5.qmd` to an PDF file to make `ps5.pdf`, 
     * The PDF should not be more than 25 pages. Use `head()` and re-size figures when appropriate. 
 8. (Partner 1): push  `ps5.qmd` and `ps5.pdf` to your github repo.
@@ -443,8 +443,9 @@ def scrape_enforcement_actions(year, month, max_pages=482):
 ```
 
 ```{python}
-#scrape data from year 2023 January
 #| eval: false
+
+#scrape data from year 2023 January
 if __name__ == "__main__":
     try:
         df = scrape_enforcement_actions(2023, 1)
@@ -471,8 +472,8 @@ Categories: Criminal and Civil Actions
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
-# Run scraper from January 2021
 #| eval: false
+# Run scraper from January 2021
 if __name__ == "__main__":
     try:
         df = scrape_enforcement_actions(2021, 1)
@@ -696,10 +697,10 @@ chart_district_count = alt.Chart(district_count_shp).mark_geoshape().encode(
     alt.Color('Count:Q', scale=alt.Scale(scheme='Greens')),
     tooltip=['judicial_d:N', 'Count:Q'] 
 ).project(
-    type='albersUsa'  # Apply Albers USA projection
+    type='albersUsa' 
 ).properties(
-    width=800,  # Adjust the width as needed
-    height=500,  # Adjust the height as needed
+    width=800, 
+    height=500,  
     title="Number of Actions by District"
 )
 
@@ -733,16 +734,48 @@ zip_pop_merge = zip_shp.merge(zip_pop[["ZCTA5","Population"]],
 ### 2. Conduct spatial join
 ```{python}
 #Conduct the join
-zip_pop_district_join = gpd.sjoin(zip_pop_merge, district_shp,how="inner", predicate="intersects")
+zip_pop_merge = zip_pop_merge.to_crs(epsg=4326)
+district_shp = district_shp.to_crs(epsg=4326)
+
+zip_pop_district_join = gpd.sjoin(zip_pop_merge, district_count_shp,how="inner", predicate="intersects")
+
+#Convert to numeric 
+zip_pop_district_join["Population"] = pd.to_numeric(zip_pop_district_join["Population"], errors='coerce')
+
+#fill na with 0 
+zip_pop_district_join["Population"].fillna(0, inplace=True)
 ```
 
 ```{python}
 #Aggregate to get the population of each district
 district_pop = zip_pop_district_join.groupby(
-"judicial_d")["Population"].sum().reset_index()
+"judicial_d")["Population"].sum().reset_index(name = "District Pop")
 ```
 
 ### 3. Map the action ratio in each district
 ```{python}
+#merge the population to the shapefile 
+pop_district_shp = district_count_shp.merge(district_pop,
+                                left_on="judicial_d",
+                                right_on = "judicial_d",
+                                how="left")
 
+#calculate the ratio of enforcement actions
+pop_district_shp["Ratio"] = pop_district_shp["Count"]/pop_district_shp["District Pop"]
+```
+
+```{python}
+#Map out the ratio 
+chart_ratio = alt.Chart(pop_district_shp).mark_geoshape().encode(
+    alt.Color('Ratio:Q', scale=alt.Scale(scheme='Blues')),
+    tooltip=['judicial_d:N', 'Ratio:Q'] 
+).project(
+    type='albersUsa' 
+).properties(
+    width=800, 
+    height=500,  
+    title="Ratio of Enforcement Actions per Capita in Each District"
+)
+
+chart_ratio 
 ```
