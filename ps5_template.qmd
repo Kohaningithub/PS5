@@ -229,7 +229,8 @@ FUNCTION scrape_enforcement_actions(year, month):
    Return the filtered DataFrame
 
 * b. Create Dynamic Scraper (PARTNER 2)
-I will use ThreadPoolExecutor to get data much more faster than the regular process. And I used several strategies to avoid time out problem.
+
+I will use ThreadPoolExecutor to get data much more faster than the regular process. And I used several strategies to avoid frequent timeout and connection errors and consistent failures on specific pages (like pages 192 and 193).
 
 ```{python}
 import pandas as pd
@@ -243,32 +244,85 @@ import sys
 # 增加递归限制
 sys.setrecursionlimit(10000)
 
-def fetch_page(url):
-    try:
-        response = requests.get(url, timeout=10)
-        return BeautifulSoup(response.content, 'html.parser')  # use html.parser instead of lxml
-    except Exception as e:
-        print(f"Error fetching page {url}: {str(e)}")
-        return None
+def fetch_detailed_info(link, session=None, max_retries=3):
+    if session is None:
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+    
+    for attempt in range(max_retries):
+        try:
+            response = session.get(link, timeout=10)
+            if response.status_code == 200:
+                detailed_soup = BeautifulSoup(response.content, "html.parser")
+                agency = 'No agency found'
+                detail_div = detailed_soup.find('div', class_='margin-top-5 padding-y-3 border-y-1px border-base-lighter')
+                if detail_div:
+                    all_li = detail_div.find_all('li')
+                    for li in all_li:
+                        span = li.find('span')
+                        if span and 'Agency:' in span.text:
+                            agency = li.text.replace('Agency:', '').strip()
+                            break
+                return agency
+            
+            if attempt < max_retries - 1:
+                time.sleep(1)
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(1)
+            else:
+                print(f"Error processing {link}: {str(e)}")
+    return 'Error retrieving agency'
 
-def fetch_detailed_info(link):
-    try:
-        response = requests.get(link, timeout=10)
-        detailed_soup = BeautifulSoup(response.content, "html.parser")
-        
-        agency = 'No agency found'
-        detail_div = detailed_soup.find('div', class_='margin-top-5 padding-y-3 border-y-1px border-base-lighter')
-        if detail_div:
-            all_li = detail_div.find_all('li')
-            for li in all_li:
-                span = li.find('span')
-                if span and 'Agency:' in span.text:
-                    agency = li.text.replace('Agency:', '').strip()
-                    break
-        return agency
-    except Exception as e:
-        print(f"Error processing {link}: {str(e)}")
-        return 'Error retrieving agency'
+def fetch_page_data(page_num, session=None, max_retries=3):
+    if session is None:
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+    
+    base_url = "https://oig.hhs.gov/fraud/enforcement/"
+    for attempt in range(max_retries):
+        try:
+            current_url = f"{base_url}?page={page_num}" if page_num > 1 else base_url
+            response = session.get(current_url, timeout=10)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                entries = soup.find_all('h2', class_='usa-card__heading')
+                
+                page_data = []
+                for entry in entries:
+                    link = entry.find('a')
+                    if link:
+                        title = link.text.strip()
+                        full_link = 'https://oig.hhs.gov' + link['href']
+                        div = entry.find_parent('div')
+                        if div:
+                            date = div.find('span', class_='text-base-dark padding-right-105')
+                            date_text = date.text.strip() if date else 'No date found'
+                            category_tags = div.find_all('li', class_='display-inline-block usa-tag text-no-lowercase text-base-darkest bg-base-lightest margin-right-1')
+                            entry_categories = [cat.text.strip() for cat in category_tags] if category_tags else ['NA']
+                            page_data.append({
+                                'Title': title,
+                                'Date': date_text,
+                                'Categories': entry_categories,
+                                'Link': full_link
+                            })
+                return page_data if page_data else None
+            
+            if attempt < max_retries - 1:
+                time.sleep(1)
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(1)
+            else:
+                print(f"Error on page {page_num}: {str(e)}")
+    return None
 
 def scrape_enforcement_actions(year, month, max_pages=482):
     if year < 2013:
@@ -276,72 +330,68 @@ def scrape_enforcement_actions(year, month, max_pages=482):
         return None
     
     data_list = []
-    base_url = "https://oig.hhs.gov/fraud/enforcement/"
-    page = 1
-
-    while page <= max_pages:
-        try:
-            print(f"Processing page {page}...")
-            current_url = f"{base_url}?page={page}" if page > 1 else base_url
-            
-            soup = fetch_page(current_url)
-            if soup is None:
-                print(f"Failed to fetch page {page}")
-                break
-                
-            entries = soup.find_all('h2', class_='usa-card__heading')
-            
-            if not entries:
-                print(f"No entries found on page {page}. Stopping pagination.")
-                break
-            
-            entries_added = 0
-            for entry in entries:
-                link = entry.find('a')
-                if link:
-                    title = link.text.strip()
-                    full_link = 'https://oig.hhs.gov' + link['href']
-                    
-                    div = entry.find_parent('div')
-                    if div:
-                        date = div.find('span', class_='text-base-dark padding-right-105')
-                        date_text = date.text.strip() if date else 'No date found'
-                        
-                        category_tags = div.find_all('li', class_='display-inline-block usa-tag text-no-lowercase text-base-darkest bg-base-lightest margin-right-1')
-                        entry_categories = [cat.text.strip() for cat in category_tags] if category_tags else ['NA']
-                        
-                        data_list.append({
-                            'Title': title,
-                            'Date': date_text,
-                            'Categories': entry_categories,
-                            'Link': full_link
-                        })
-                        entries_added += 1
-            
-            if entries_added == 0:
-                print(f"No valid entries added on page {page}. Stopping pagination.")
-                break
-            
-            print(f"Added {entries_added} entries from page {page}")
-            page += 1
-            time.sleep(random.uniform(1, 2))  # 增加延迟时间
-            
-        except Exception as e:
-            print(f"Error processing page {page}: {str(e)}")
-            break
-
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    })
+    
+    # 第一阶段：快速并行获取页面
+    print("Fetching pages...")
+    failed_pages = set()
+    
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_page = {
+            executor.submit(fetch_page_data, page, session): page 
+            for page in range(1, max_pages + 1)
+        }
+        
+        for future in as_completed(future_to_page):
+            page = future_to_page[future]
+            try:
+                page_data = future.result()
+                if page_data:
+                    data_list.extend(page_data)
+                    print(f"Added data from page {page}")
+                else:
+                    failed_pages.add(page)
+            except Exception as e:
+                failed_pages.add(page)
+                print(f"Error on page {page}: {str(e)}")
+    
+    # 第二阶段：单独处理失败的页面
+    if failed_pages:
+        print(f"\nRetrying {len(failed_pages)} failed pages...")
+        for page in sorted(failed_pages):
+            try:
+                page_data = fetch_page_data(page, session, max_retries=5)
+                if page_data:
+                    data_list.extend(page_data)
+                    failed_pages.remove(page)
+                    print(f"Successfully retrieved page {page} in retry")
+            except Exception as e:
+                print(f"Failed to retrieve page {page} in retry: {str(e)}")
+    
     print(f"\nCollected {len(data_list)} total entries")
     
-    # Fetch agency info with reduced parallelism
-    with ThreadPoolExecutor(max_workers=5) as executor:  # 减少并行数
-        futures = {executor.submit(fetch_detailed_info, entry['Link']): i 
-                  for i, entry in enumerate(data_list)}
+    # 第三阶段：快速获取机构信息
+    print("Fetching agency information...")
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_entry = {
+            executor.submit(fetch_detailed_info, entry['Link'], session): i 
+            for i, entry in enumerate(data_list)
+        }
         
-        for future in as_completed(futures):
+        completed = 0
+        total = len(data_list)
+        
+        for future in as_completed(future_to_entry):
             try:
-                idx = futures[future]
+                idx = future_to_entry[future]
                 agency = future.result()
                 data_list[idx]['Agency'] = agency
+                completed += 1
+                if completed % 20 == 0:
+                    print(f"Processed {completed}/{total} entries")
             except Exception as e:
                 print(f"Error processing agency info: {str(e)}")
 
@@ -372,7 +422,7 @@ def scrape_enforcement_actions(year, month, max_pages=482):
     df_separate = pd.DataFrame(rows_separate)
     df_combined = pd.DataFrame(rows_combined)
     
-    # Convert dates and filter by date
+    # Convert date and filter
     for df in [df_separate, df_combined]:
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df = df[df['Date'] >= f"{year}-{month:02d}-01"]
@@ -389,7 +439,6 @@ def scrape_enforcement_actions(year, month, max_pages=482):
     
     return df_combined
 
-# Run the scraper
 if __name__ == "__main__":
     try:
         df = scrape_enforcement_actions(2023, 1)
@@ -404,12 +453,14 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error running scraper: {str(e)}")
 ```
+
 Total number of enforcement actions: 9623
 Earliest enforcement action:
 Date: 2012-06-20 00:00:00
 Title: One Individual Charged with Failure to Pay Legal Child Support
 Agency: U.S. Attorney's Office District of Puerto Rico
 Categories: Child Support and Criminal and Civil Actions
+
 
 * c. Test Partner's Code (PARTNER 1)
 
